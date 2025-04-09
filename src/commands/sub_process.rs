@@ -52,6 +52,7 @@ fn execute_sub_process(
         words[0]
             .replace("%s", file_name)
             .replace("%p", &file_path.to_string_lossy())
+            .replace("%d", &current_dir(app_state).to_string_lossy())
     } else {
         words[0].clone()
     };
