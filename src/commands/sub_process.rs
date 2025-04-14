@@ -46,38 +46,47 @@ fn execute_sub_process(
     mode: SubprocessCallMode,
 ) -> std::io::Result<()> {
     let current_files = current_files(app_state);
-    let command_base = if current_files.len() == 1 {
+
+    let mut command = Command::new("sh");
+    command.arg("-c");
+
+    let mut str = String::new();
+    if current_files.len() == 1 {
         let (file_name, file_path) = current_files[0];
-
-        words[0]
-            .replace("%s", file_name)
-            .replace("%p", &file_path.to_string_lossy())
-            .replace("%d", &current_dir(app_state).to_string_lossy())
+        str.push_str(
+            words[0]
+                .replace("%s", file_name)
+                .replace("%p", &file_path.to_string_lossy())
+                .replace("%d", &current_dir(app_state).to_string_lossy())
+                .as_str(),
+        );
     } else {
-        words[0].clone()
-    };
+        str.push_str(words[0].as_str());
+    }
 
-    let mut command = Command::new(command_base);
     for word in words.iter().skip(1) {
+        str.push(' ');
         match word.as_str() {
             "%s" => {
                 for (file_name, _) in &current_files {
-                    command.arg(file_name);
+                    str.push_str(file_name);
                 }
             }
             "%p" => {
                 for (_, file_path) in &current_files {
-                    command.arg(file_path);
+                    str.push_str(&file_path.to_string_lossy());
                 }
             }
             "%d" => {
-                command.arg(current_dir(app_state));
+                str.push_str(&current_dir(app_state).to_string_lossy());
             }
             s => {
-                command.arg(s);
+                str.push_str(s);
             }
         };
     }
+    command.arg(str);
+
     match mode {
         SubprocessCallMode::Interactive => {
             let status = command.status();
