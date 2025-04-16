@@ -47,45 +47,109 @@ fn execute_sub_process(
 ) -> std::io::Result<()> {
     let current_files = current_files(app_state);
 
-    let mut command = Command::new("sh");
-    command.arg("-c");
+    let mut command: Command;
+    if let SubprocessCallMode::Interactive = mode {
+        let mut cmd = String::new();
+        command = Command::new("sh");
+        command.arg("-c");
+        if current_files.len() == 1 {
+            let (file_name, file_path) = current_files[0];
+            cmd.push_str(
+                words[0]
+                    .replace("%s", file_name)
+                    .replace("%p", &file_path.to_string_lossy())
+                    .as_str(),
+            );
+        } else {
+            cmd.push_str(words[0].as_str());
+        }
 
-    let mut str = String::new();
-    if current_files.len() == 1 {
-        let (file_name, file_path) = current_files[0];
-        str.push_str(
+        for word in words.iter().skip(1) {
+            cmd.push(' ');
+            match word.as_str() {
+                "%s" => {
+                    if let Some((start, _)) = current_files.get(0) {
+                        cmd.push_str(
+                            &current_files
+                                .iter()
+                                .skip(1)
+                                .map(|(file_name, _)| file_name)
+                                .fold(start.to_string(), |acc, e| {
+                                    format!("{acc} \"{e}\"")
+                                }),
+                        );
+                    }
+
+                    // for (i, (file_name, _)) in current_files.iter().enumerate() {
+                    //     cmd.push_str(&format!("\"{}\"", file_name));
+                    //     if i < current_files.len() - 1 {
+                    //         cmd.push(' ');
+                    //     }
+                    // }
+                }
+                "%p" => {
+                    if let Some((_, start)) = current_files.get(0) {
+                        cmd.push_str(
+                            &current_files
+                                .iter()
+                                .skip(1)
+                                .map(|(_, file_path)| file_path.to_string_lossy())
+                                .fold(start.to_string_lossy().to_string(), |acc, e| {
+                                    format!("{acc} \"{e}\"")
+                                }),
+                        );
+                    }
+
+                    // for (i, (_, file_path)) in current_files.iter().enumerate() {
+                    //     cmd.push_str(&format!("\"{}\"", file_path.to_string_lossy()));
+                    //     if i < current_files.len() - 1 {
+                    //         cmd.push(' ');
+                    //     }
+                    // }
+                }
+                "%d" => {
+                    cmd.push_str(&current_dir(app_state).to_string_lossy());
+                }
+                s => {
+                    cmd.push_str(s);
+                }
+            };
+        }
+
+        command.arg(cmd);
+    } else {
+        let command_base = if current_files.len() == 1 {
+            let (file_name, file_path) = current_files[0];
+
             words[0]
                 .replace("%s", file_name)
                 .replace("%p", &file_path.to_string_lossy())
-                .replace("%d", &current_dir(app_state).to_string_lossy())
-                .as_str(),
-        );
-    } else {
-        str.push_str(words[0].as_str());
-    }
-
-    for word in words.iter().skip(1) {
-        str.push(' ');
-        match word.as_str() {
-            "%s" => {
-                for (file_name, _) in &current_files {
-                    str.push_str(file_name);
-                }
-            }
-            "%p" => {
-                for (_, file_path) in &current_files {
-                    str.push_str(&file_path.to_string_lossy());
-                }
-            }
-            "%d" => {
-                str.push_str(&current_dir(app_state).to_string_lossy());
-            }
-            s => {
-                str.push_str(s);
-            }
+        } else {
+            words[0].clone()
         };
+
+        command = Command::new(command_base);
+        for word in words.iter().skip(1) {
+            match word.as_str() {
+                "%s" => {
+                    for (file_name, _) in &current_files {
+                        command.arg(file_name);
+                    }
+                }
+                "%p" => {
+                    for (_, file_path) in &current_files {
+                        command.arg(file_path);
+                    }
+                }
+                "%d" => {
+                    command.arg(current_dir(app_state));
+                }
+                s => {
+                    command.arg(s);
+                }
+            };
+        }
     }
-    command.arg(str);
 
     match mode {
         SubprocessCallMode::Interactive => {
